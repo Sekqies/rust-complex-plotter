@@ -24,12 +24,13 @@ pub struct IndexNode{
     children:Vec<usize>,
     symbol:Symbol,
 }
+#[derive(Debug)]
 pub struct SyntaxNode{
     symbol: Symbol,
     children: Vec<Rc<SyntaxNode>>,
 }
 
-
+#[derive(Debug)]
 pub struct SyntaxTree{
     head: usize,
     arena: Vec<IndexNode>
@@ -114,7 +115,7 @@ fn build_value(symbol:&String) -> Symbol{
     return Symbol::UNKNOWN;
 }
 
-fn is_value(symbol:Symbol) -> bool{
+fn is_value(symbol:&Symbol) -> bool{
     matches!(symbol,Symbol::CONSTANT(_)) || matches!(symbol,Symbol::VARIABLE(_))
 }
 
@@ -136,13 +137,13 @@ fn hierarchize(symbols: &Vec<String>) -> SyntaxTree {
         match stack.last(){
             Some(&parent_index) => {
                 arena[parent_index].children.push(current_index);
-                if !is_value(function) {
+                if !is_value(&function) {
                     stack.push(current_index);
                 }
             }
             None => {
                 head_index = current_index;
-                if !is_value(function) {
+                if !is_value(&function) {
                     stack.push(current_index);
                 }
             }
@@ -206,11 +207,7 @@ fn derivative(node:&Rc<SyntaxNode>) -> Rc<SyntaxNode>{
                 symbol: Symbol::COS,
                 children: vec![inner.clone()]
             };
-            let r =SyntaxNode{
-                symbol: Symbol::SIN,
-                children: vec![derivative(&inner)]
-            };
-            out.children = vec![Rc::new(l),Rc::new(r)];
+            out.children = vec![Rc::new(l),derivative(&inner)];
         },
         Symbol::COS => {
 
@@ -229,42 +226,56 @@ fn derivative(node:&Rc<SyntaxNode>) -> Rc<SyntaxNode>{
     Rc::new(out)
 }
 
-fn print_tree(tree: &SyntaxTree){
-    fn recurse(node: &usize, arena: &Vec<IndexNode>){
-        println!("{:?}",arena[*node]);
-        for child in arena[*node].children.iter(){
-            recurse(&child,&arena);
+
+
+fn structure_tree(tree: &SyntaxTree) -> SyntaxNode {
+    fn build_node(node_index: usize, arena: &Vec<IndexNode>) -> SyntaxNode {
+        let arena_node = &arena[node_index];
+
+        let children: Vec<Rc<SyntaxNode>> = arena_node
+            .children
+            .iter()
+            .map(|child_index| Rc::new(build_node(*child_index, arena)))
+            .collect();
+
+        SyntaxNode {
+            symbol: arena_node.symbol.clone(),
+            children: children,
         }
     }
-    recurse(&tree.head,&tree.arena);
+
+    if tree.arena.is_empty() {
+        panic!("Árvore vazia");
+    }
+
+    build_node(tree.head, &tree.arena)
 }
 
-fn structure_tree(tree:&SyntaxTree)->SyntaxNode{
-    let mut head = SyntaxNode{
-        children: vec![],
-        symbol: tree.arena[tree.head].symbol.clone()
-    };
-    fn traverse(node:&usize, arena:&Vec<IndexNode>, current_head: &mut SyntaxNode) -> SyntaxNode{
-        let mut new_node = SyntaxNode{
-            children: vec![],
-            symbol: arena[*node].symbol.clone()
-        };
-        for child in arena[*node].children.iter(){
-            current_head.children.push(Rc::new(traverse(child,arena,&mut new_node)));
+fn print_tree(node: &SyntaxNode) {
+    print!("{:?}", node.symbol);
+
+    if !is_value(&node.symbol) {
+        print!("(");
+        let mut children_iter = node.children.iter().peekable();
+        while let Some(child) = children_iter.next() {
+            print_tree(child);
+            if children_iter.peek().is_some() {
+                print!(", ");
+            }
         }
-        new_node
+
+        print!(")");
     }
-    traverse(&tree.head,&tree.arena,&mut head);
-    head
 }
 
 
 fn main() {
-    let function = "sin(add(add(z,3),cos(z)))".into();
+    let function = "sin(add(sin(z),2))".into();
     let symbols = break_into_symbols(&function);
     let tree = hierarchize(&symbols);
     let head = structure_tree(&tree);
-    derivative(&Rc::new(head));
-    println!("{:?}", symbols);
-    //print_tree(&head);
+    let new_head = derivative(&Rc::new(head));
+    print_tree(&structure_tree(&tree));
+    println!();
+    print_tree(&new_head);
 }
