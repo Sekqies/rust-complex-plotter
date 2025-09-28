@@ -13,10 +13,11 @@ pub enum Symbol{
     DIVIDE,
     SIN,
     COS,
+    TAN,
     CONSTANT(String),
     VARIABLE(String),
     DERIVATIVE,
-    NUMERICAL_DERIVATIVE,
+    NUMERICALDERIVATIVE,
     UNKNOWN
 }
 #[derive(Debug,Clone)]
@@ -48,9 +49,10 @@ impl IndexNode{
 
 
 
-fn break_into_symbols(expression:&String)->Vec<String>{
+fn tokenize(expression:&String)->Vec<String>{
     let mut out:Vec<String> = Vec::new();
     let separators:Vec<char> = [',','(',')',';'].into();
+    let operators = HashSet::from(['+','-','/','*','^']);
     let mut last_separator_index = 0;
 
     for (i,c) in expression.char_indices(){
@@ -61,6 +63,9 @@ fn break_into_symbols(expression:&String)->Vec<String>{
                 out.push(token_slice.to_string());
             }
             if c=='(' || c== ')' {
+                out.push(c.to_string());
+            }
+            if operators.contains(&c){
                 out.push(c.to_string());
             }
                 last_separator_index = i + c.len_utf8();
@@ -83,7 +88,7 @@ fn get_symbol_mapper() -> &'static HashMap<&'static str, Symbol> {
             ("add", Symbol::ADD),
             ("sin", Symbol::SIN),
             ("cos", Symbol::COS),
-
+            ("tan", Symbol::TAN)
         ])
     })
 }
@@ -118,7 +123,6 @@ fn build_value(symbol:&String) -> Symbol{
 fn is_value(symbol:&Symbol) -> bool{
     matches!(symbol,Symbol::CONSTANT(_)) || matches!(symbol,Symbol::VARIABLE(_))
 }
-
 
 fn hierarchize(symbols: &Vec<String>) -> SyntaxTree {
     let mut arena: Vec<IndexNode> = Vec::new();
@@ -210,7 +214,17 @@ fn derivative(node:&Rc<SyntaxNode>) -> Rc<SyntaxNode>{
             out.children = vec![Rc::new(l),derivative(&inner)];
         },
         Symbol::COS => {
-
+            out.symbol = Symbol::MULTIPLY;
+            let inner = node.children[0].clone();
+            let l_inner = SyntaxNode{
+                symbol: Symbol::SIN,
+                children: vec![inner.clone()]
+            };
+            let l = SyntaxNode{
+                symbol: Symbol::NEGATE,
+                children: vec![Rc::new(l_inner)]
+            };
+            out.children = vec![Rc::new(l),derivative(&inner)];
         }
         Symbol::CONSTANT(_) => {
             out.symbol = Symbol::CONSTANT("0".to_string());
@@ -218,8 +232,8 @@ fn derivative(node:&Rc<SyntaxNode>) -> Rc<SyntaxNode>{
         Symbol::VARIABLE(_) => {
             out.symbol = Symbol::CONSTANT("1".to_string());
         },
-        tipo => {
-            println!("fiz merda {:?}",tipo);
+        _ => {
+            println!("Tipo não suportado em expressão!");
         }
     }
     println!("Derivada: {:?}",out.symbol.clone());
@@ -271,7 +285,7 @@ fn print_tree(node: &SyntaxNode) {
 
 fn main() {
     let function = "sin(add(sin(z),2))".into();
-    let symbols = break_into_symbols(&function);
+    let symbols = tokenize(&function);
     let tree = hierarchize(&symbols);
     let head = structure_tree(&tree);
     let new_head = derivative(&Rc::new(head));
